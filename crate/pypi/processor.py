@@ -359,27 +359,23 @@ class PyPIPackage(object):
 
         for data in self.data.values():
             try:
-                if pypi_pages.get("has_sig"):
-                    simple_html = lxml.html.fromstring(pypi_pages["simple"])
-                    simple_html.make_links_absolute(urlparse.urljoin(SIMPLE_URL, data["package"]) + "/")
+                # if pypi_pages.get("has_sig"):
+                #     simple_html = lxml.html.fromstring(pypi_pages["simple"])
+                #     simple_html.make_links_absolute(urlparse.urljoin(SIMPLE_URL, data["package"]) + "/")
 
-                    verified_md5_hashes = {}
+                #     verified_md5_hashes = {}
 
-                    for link in simple_html.iterlinks():
-                            m = _md5_re.search(link[2])
-                            if m:
-                                url, md5_hash = m.groups()
-                                verified_md5_hashes[url] = md5_hash
+                #     for link in simple_html.iterlinks():
+                #             m = _md5_re.search(link[2])
+                #             if m:
+                #                 url, md5_hash = m.groups()
+                #                 verified_md5_hashes[url] = md5_hash
 
                 package = Package.objects.get(name=data["package"])
                 release = Release.objects.filter(package=package, version=data["version"]).select_for_update()
 
                 for release_file in ReleaseFile.objects.filter(release=release, filename__in=[x["filename"] for x in data["files"]]).select_for_update():
                     file_data = [x for x in data["files"] if x["filename"] == release_file.filename][0]
-
-                    if pypi_pages.get("has_sig"):
-                        if verified_md5_hashes[file_data["file"]].lower() != file_data["digests"]["md5"].lower():
-                            raise Exception("MD5 does not match simple API md5 [Verified by ServerSig]")  # @@@ Custom Exception
 
                     datastore_key = "crate:pypi:download:%(url)s" % {"url": file_data["file"]}
                     stored_file_data = self.datastore.hgetall(datastore_key)
@@ -492,7 +488,7 @@ class PyPIPackage(object):
 
         try:
             # Download the "simple" page from PyPI for this package
-            simple = requests.get(urlparse.urljoin(SIMPLE_URL, urllib.quote(self.name)), prefetch=True)
+            simple = requests.get(urlparse.urljoin(SIMPLE_URL, urllib.quote(self.name.encode("utf-8"))), prefetch=True)
             simple.raise_for_status()
         except requests.HTTPError:
             if simple.status_code == 404:
@@ -504,7 +500,7 @@ class PyPIPackage(object):
 
         try:
             # Download the "serversig" page from PyPI for this package
-            serversig = requests.get(urlparse.urljoin(SERVERSIG_URL, urllib.quote(self.name)), prefetch=True)
+            serversig = requests.get(urlparse.urljoin(SERVERSIG_URL, urllib.quote(self.name.encode("utf-8"))), prefetch=True)
             serversig.raise_for_status()
         except requests.HTTPError:
             if serversig.status_code == 404:
@@ -514,7 +510,7 @@ class PyPIPackage(object):
         try:
             if not verify(key, simple.content, serversig.content):
                 raise Exception("Simple API page does not match serversig")  # @@@ This Should be Custom Exception
-        except (UnicodeDecodeError, UnicodeEncodeError, ValueError):
+        except (UnicodeDecodeError, UnicodeEncodeError, ValueError, AssertionError):
             logger.exception("Exception trying to verify %s" % self.name)  # @@@ Figure out a better way to handle this
 
         try:
