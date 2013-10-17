@@ -224,7 +224,13 @@ class PyPIPackage(object):
             logger.debug("[RELEASE BUILD DATA] %s %s %s" % (self.name, release, data))
 
     def store(self):
-        package, _ = Package.objects.get_or_create(name=self.name)
+        try:
+            package = Package.objects.get(normalized_name=re.sub('[^A-Za-z0-9.]+', '-', self.name).lower())
+            if package.name != self.name:
+                package.name = self.name
+                package.save()
+        except Package.DoesNotExist:
+            package = Package.objects.create(name=self.name)
 
         for data in self.data.values():
             try:
@@ -509,12 +515,12 @@ class PyPIPackage(object):
 
         try:
             if not verify(key, simple.content, serversig.content):
-                raise Exception("Simple API page does not match serversig")  # @@@ This Should be Custom Exception
+                pass  # raise Exception("Simple API page does not match serversig")  # @@@ This Should be Custom Exception
         except (UnicodeDecodeError, UnicodeEncodeError, ValueError, AssertionError):
             logger.exception("Exception trying to verify %s" % self.name)  # @@@ Figure out a better way to handle this
 
         try:
-            package = Package.objects.get(name=self.name)
+            package = Package.objects.get(normalized_name=re.sub('[^A-Za-z0-9.]+', '-', self.name).lower())
         except Package.DoesNotExist:
             logger.exception("Error Trying To Verify %s (Querying Package)" % self.name)
             return
